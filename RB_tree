@@ -1,0 +1,563 @@
+#include <iostream>
+#include <initializer_list>
+#include<algorithm>
+
+enum Colors {kRed, kBlack};
+
+template <typename ValueType>
+struct Node {
+    ValueType key;
+    int color = kRed;
+    Node<ValueType>* left = nullptr;
+    Node<ValueType>* right = nullptr;
+    Node<ValueType>* parent = nullptr;
+
+    bool is_left_son() const {
+        if (!parent) {
+            return false;
+        }
+        return parent->left == this;
+    };
+    bool is_right_son() const {
+        if (!parent) {
+            return false;
+        }
+        return parent->right == this;
+    };
+
+    Node<ValueType>* min_node(Node<ValueType>* const sub_root) const {
+        Node<ValueType>* node = sub_root;
+        while (node->left) {
+            node = node->left;
+        }
+        return node;
+    }
+
+    Node<ValueType>* max_node(Node<ValueType>* const sub_root) const {
+        Node<ValueType>* node = sub_root;
+        while (node->right) {
+            node = node->right;
+        }
+        return node;
+    }
+
+    Node<ValueType>* root() {
+        Node<ValueType>* node = this;
+        while (node->parent) {
+            node = node->parent;
+        }
+        return node;
+    }
+};
+
+template <typename ValueType>
+class Set {
+public:
+    Set() {
+        root_ = nullptr;
+        size_ = 0;
+    }
+
+    template<typename iterator>
+    Set(const iterator left, const iterator right) {
+        root_ = nullptr;
+        size_ = 0;
+        auto var_iter = left;
+        while (var_iter != right) {
+            insert(*var_iter);
+            ++var_iter;
+        }
+    }
+
+    explicit Set(std::initializer_list<ValueType> init) {
+        root_ = nullptr;
+        size_ = 0;
+        for (auto elem : init) {
+            insert(elem);
+        }
+    }
+
+    Set(const Set &other) {
+        size_ = other.size_;
+        root_ = nullptr;
+        if (other.root_ == nullptr) {
+            return;
+        }
+        root_ = new Node<ValueType>();
+        build(other.root_, root_, nullptr);
+    }
+
+    ~Set() {
+        if (root_ == nullptr) {
+            return;
+        }
+        destroy(root_);
+    }
+    void swap(Set& other) {
+        std::swap(size_, other.size_);
+        std::swap(root_, other.root_);
+    }
+    Set& operator=(const Set& other) {
+        if (this == &other) {
+            return *this;
+        }
+        destroy(root_);
+        root_ = nullptr;
+        size_ = other.size_;
+        if (other.root_ == nullptr) {
+            return *this;
+        }
+        root_ = new Node<ValueType>();
+        build(other.root_, root_, nullptr);
+        return *this;
+    }
+
+    class iterator : public std::iterator<std::bidirectional_iterator_tag, Node<ValueType> *> {
+    public:
+        iterator() {}
+
+        iterator(Node<ValueType> *const current, Node<ValueType> *const root) {
+            current_ = current;
+            root_ = root;
+        }
+
+        iterator &operator++() {
+            if (current_->right) {
+                current_ = current_->min_node(current_->right);
+                return *this;
+            }
+            while (current_ && current_->is_right_son()) {
+                current_ = current_->parent;
+            }
+            current_ = current_->parent;
+            return *this;
+        }
+
+        iterator &operator--() {
+            if (current_ == nullptr) {
+                if (root_) {
+                    current_ = root_->max_node(root_);
+                }
+                return *this;
+            }
+            if (current_->left) {
+                current_ = current_->max_node(current_->left);
+                return *this;
+            }
+            while (current_ && current_->is_left_son()) {
+                current_ = current_->parent;
+            }
+            current_ = current_->parent;
+            return *this;
+        }
+
+        iterator &operator+=(int diff) {
+            if (diff < 0) {
+                for (int i = 0; i < -diff; ++i) {
+                    --this;
+                }
+            } else {
+                for (int i = 0; i < diff; ++i) {
+                    ++this;
+                }
+            }
+            return *this;
+        }
+
+        iterator &operator-=(int diff) {
+            return this += -diff;
+        }
+
+        iterator operator+(int diff) {
+            iterator result = *this;
+            result += diff;
+            return result;
+        }
+
+        iterator operator-(int diff) {
+            iterator result = *this;
+            return result -= diff;
+        }
+
+        iterator operator++(int) {
+            iterator result(*this);
+            ++*this;
+            return result;
+        }
+
+        iterator operator--(int) {
+            iterator result(*this);
+            --*this;
+            return result;
+        }
+
+        bool operator==(const iterator &other) const {
+            return current_ == other.current_;
+        }
+
+        bool operator!=(const iterator &other) const {
+            return current_ != other.current_;
+        }
+
+        ValueType operator*() {
+            return current_->key;
+        }
+
+        ValueType *operator->() {
+            return &current_->key;
+        }
+
+    private:
+        Node<ValueType> *current_;
+        Node<ValueType> *root_;
+    };
+
+    iterator begin() const {
+        if (!root_) {
+            return iterator(nullptr, nullptr);
+        }
+        return iterator(get_min_subtree_node(root_), root_);
+    }
+
+    iterator end() const {
+        return iterator(nullptr, root_);
+    }
+
+    const size_t size() const {
+        return size_;
+    };
+
+    const bool empty() const {
+        return (!size_);
+    };
+
+    void insert(ValueType key);
+
+    void erase(ValueType key);
+
+    iterator find(ValueType key) const;
+
+    iterator lower_bound(ValueType key) const;
+
+
+private:
+    Node<ValueType> *root_;
+    size_t size_;
+
+    void build(const Node<ValueType> *other_node, Node<ValueType> *node, Node<ValueType> *parent) {
+        node->key = other_node->key;
+        node->color = other_node->color;
+        node->parent = parent;
+        if (other_node->left != nullptr) {
+            auto new_node = new Node<ValueType>();
+            build(other_node->left, new_node, node);
+            node->left = new_node;
+        }
+        if (other_node->right != nullptr) {
+            auto new_node = new Node<ValueType>();
+            build(other_node->right, new_node, node);
+            node->right = new_node;
+        }
+    }
+
+    void destroy(Node<ValueType> *node) {
+        if (!node) {
+            return;
+        }
+        destroy(node->left);
+        destroy(node->right);
+        delete node;
+    }
+
+    Node<ValueType> *find_node(ValueType key) const {
+        auto node = root_;
+        while (node && (node->key < key || key < node->key)) {
+            node = (key < node->key) ? node->left : node->right;
+        }
+        return node;
+    }
+
+    void transplant(Node<ValueType> *first, Node<ValueType> *second) {
+        if (!first->parent) {
+            root_ = second;
+        } else if (first->is_left_son()) {
+            first->parent->left = second;
+        } else {
+            first->parent->right = second;
+        }
+        if (second) {
+            second->parent = first->parent;
+        }
+    }
+
+    void right_rotate(Node<ValueType> *node) {
+        auto other = node->left;
+        other->parent = node->parent;
+        if (node->parent && node == node->parent->right) {
+            node->parent->right = other;
+        } else if (node->parent) {
+            node->parent->left = other;
+        }
+        node->parent = other;
+        node->left = other->right;
+        if (node->left) {
+            node->left->parent = node;
+        }
+        other->right = node;
+        if (node == root_) {
+            root_ = other;
+        }
+    }
+
+    void left_rotate(Node<ValueType> *node) {
+        auto other = node->right;
+        other->parent = node->parent;
+        if (node->parent && node == node->parent->right) {
+            node->parent->right = other;
+        } else if (node->parent) {
+            node->parent->left = other;
+        }
+        node->parent = other;
+        node->right = other->left;
+        if (node->right) {
+            node->right->parent = node;
+        }
+        other->left = node;
+        if (node == root_) {
+            root_ = other;
+        }
+    }
+
+    Node<ValueType> *simple_insert(ValueType key) {
+        auto nodefirst = root_;
+        auto nodesecond = root_;
+        while (nodesecond && (nodesecond->key < key || key < nodesecond->key)) {
+            if (key < nodesecond->key) {
+                nodefirst = nodesecond;
+                nodesecond = nodesecond->left;
+            } else {
+                nodefirst = nodesecond;
+                nodesecond = nodesecond->right;
+            }
+        }
+        if (nodesecond) {
+            return root_;
+        }
+        Node<ValueType> *new_node = new Node<ValueType>;
+        ++size_;
+        new_node->key = key;
+        if (!root_) {
+            root_ = new_node;
+            return root_;
+        }
+        if (key < nodefirst->key) {
+            nodefirst->left = new_node;
+        } else {
+            nodefirst->right = new_node;
+        }
+        new_node->parent = nodefirst;
+        return new_node;
+    }
+
+    void erase(Node<ValueType> *node) {
+        Node<ValueType> *var = node;
+        Node<ValueType> *somenode;
+        Node<ValueType> *parent;
+        auto origin_color = node->color;
+        if (!node->left) {
+            parent = node->parent;
+            somenode = node->right;
+            transplant(node, node->right);
+        } else if (!node->right) {
+            parent = node->parent;
+            somenode = node->left;
+            transplant(node, node->left);
+        } else {
+            var = get_min_subtree_node(node->right);
+            origin_color = var->color;
+            parent = var->parent;
+            somenode = var->right;
+            if (var->parent == node) {
+                parent = var;
+            }
+            if (var->parent != node) {
+                transplant(var, somenode);
+                var->right = node->right;
+                var->right->parent = var;
+            }
+            transplant(node, var);
+            var->left = node->left;
+            var->left->parent = var;
+            var->color = node->color;
+        }
+        delete node;
+        --size_;
+        if (origin_color == Colors::kBlack) {
+            fixup(somenode, parent);
+        }
+    }
+
+    void fixup(Node<ValueType> *node, Node<ValueType> *parent) {
+        while (node != root_ && (!node || node->color == Colors::kBlack)) {
+            if (node) {
+                parent = node->parent;
+            }
+            if (node == parent->left) {
+                Node<ValueType>* sibling = parent->right;
+                if (sibling && sibling->color == Colors::kRed) {
+                    sibling->color = Colors::kBlack;
+                    parent->color = Colors::kRed;
+                    left_rotate(parent);
+                    sibling = parent->right;
+                }
+                if ((!sibling->left || sibling->left->color == Colors::kBlack)
+                    && (!sibling->right || sibling->right->color == Colors::kBlack)) {
+                    sibling->color = Colors::kRed;
+                    node = parent;
+                } else {
+                    if (!sibling->right || sibling->right->color == Colors::kBlack) {
+                        sibling->left->color = Colors::kBlack;
+                        sibling->color = Colors::kRed;
+                        right_rotate(sibling);
+                        sibling = parent->right;
+                    }
+                    sibling->color = parent->color;
+                    parent->color = Colors::kBlack;
+                    if (sibling->right) {
+                        sibling->right->color = Colors::kBlack;
+                    }
+                    left_rotate(parent);
+                    node = root_;
+                }
+            } else {
+                Node<ValueType>* sibling = parent->left;
+                if (sibling && sibling->color == Colors::kRed) {
+                    sibling->color = Colors::kBlack;
+                    parent->color = Colors::kRed;
+                    right_rotate(parent);
+                    sibling = parent->left;
+                }
+                if ((!sibling->right || sibling->right->color == Colors::kBlack)
+                    && (!sibling->left || sibling->left->color == Colors::kBlack)) {
+                    sibling->color = Colors::kRed;
+                    node = parent;
+                } else {
+                    if (!sibling->left || sibling->left->color == Colors::kBlack) {
+                        sibling->right->color = Colors::kBlack;
+                        sibling->color = Colors::kRed;
+                        left_rotate(sibling);
+                        sibling = parent->left;
+                    }
+                    sibling->color = parent->color;
+                    parent->color = Colors::kBlack;
+                    if (sibling->left) {
+                        sibling->left->color = Colors::kBlack;
+                    }
+                    right_rotate(parent);
+                    node = root_;
+                }
+            }
+        }
+        if (node) {
+            node->color = Colors::kBlack;
+        }
+    }
+    Node<ValueType> *get_min_subtree_node(Node<ValueType> *sub_root) const {
+        Node<ValueType> *node = sub_root;
+        while (node->left) {
+            node = node->left;
+        }
+        return node;
+    }
+
+    Node<ValueType> *get_max_subtree_node(Node<ValueType> *sub_root) const {
+        Node<ValueType> *node = sub_root;
+        while (node->right) {
+            node = node->right;
+        }
+        return node;
+    }
+};
+
+template <typename ValueType>
+typename Set<ValueType>::iterator Set<ValueType>::lower_bound(ValueType key) const {
+    auto node = root_;
+    while (node) {
+        if (node->key < key) {
+            if (node->right) {
+                node = node->right;
+                continue;
+            }
+            return ++iterator(node, root_);
+        } else if (key < node->key) {
+            if (node->left) {
+                node = node->left;
+                continue;
+            }
+            return iterator(node, root_);
+        } else {
+            return iterator(node, root_);
+        }
+    }
+    return end();
+}
+
+template <typename ValueType>
+void Set<ValueType>::erase(ValueType key) {
+    Node<ValueType>* node = find_node(key);
+    if (!node) {
+        return;
+    }
+    erase(node);
+}
+
+template <typename ValueType>
+void Set<ValueType>::insert(ValueType key) {
+    Node<ValueType> *node = simple_insert(key);
+    while (node->parent && node->parent->color == kRed) {
+        Node<ValueType> *parent = node->parent;
+        Node<ValueType> *grandparent = parent->parent;
+        Node<ValueType> *uncle = grandparent->left;
+        if (parent == grandparent->left) {
+            uncle = grandparent->right;
+            if (uncle && uncle->color == kRed) {
+                parent->color = kBlack;
+                uncle->color = kBlack;
+                grandparent->color = kRed;
+                node = grandparent;
+                continue;
+            }
+            if (node == parent->right) {
+                node = parent;
+                left_rotate(parent);
+                parent = node->parent;
+            }
+            parent->color = kBlack;
+            grandparent->color = kRed;
+            right_rotate(grandparent);
+        } else {
+            if (uncle && uncle->color == kRed) {
+                parent->color = kBlack;
+                uncle->color = kBlack;
+                grandparent->color = kRed;
+                node = grandparent;
+                continue;
+            }
+            if (node == parent->left) {
+                right_rotate(parent);
+                node = parent;
+                parent = node->parent;
+            }
+            parent->color = kBlack;
+            grandparent->color = kRed;
+            left_rotate(grandparent);
+        }
+    }
+    root_->color = kBlack;
+}
+
+template <typename ValueType>
+typename Set<ValueType>::iterator Set<ValueType>::find(ValueType key) const {
+    Node<ValueType>* node = find_node(key);
+    return iterator(node, root_);
+}
